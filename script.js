@@ -28,10 +28,11 @@ const websiteFields = document.getElementById("websiteFields");
 const bookmarkFields = document.getElementById("bookmarkFields");
 
 // ===============================
-// TRACK CURRENT CATEGORY
+// TRACK CURRENT CATEGORY AND EDIT STATE
 // ===============================
 
 let currentCategory = "songs";
+let editingId = null; // Track if we're editing an item
 
 // ===============================
 // SIDEBAR TOGGLE LOGIC
@@ -43,11 +44,25 @@ toggleBtn.addEventListener("click", () => {
 });
 
 // ===============================
-// OPEN MODAL WITH FORM RESET
+// OPEN MODAL FOR ADD
 // ===============================
 
 addBtn.addEventListener("click", () => {
     // Reset form
+    resetForm();
+    
+    // Set to add mode
+    editingId = null;
+    saveBtn.textContent = "Save Item";
+    
+    modal.classList.remove("hidden");
+});
+
+// ===============================
+// RESET FORM FUNCTION
+// ===============================
+
+function resetForm() {
     titleInput.value = "";
     descInput.value = "";
     imageInput.value = "";
@@ -63,9 +78,65 @@ addBtn.addEventListener("click", () => {
     songFields.style.display = "block";
     websiteFields.style.display = "none";
     bookmarkFields.style.display = "none";
+}
+
+// ===============================
+// OPEN MODAL FOR EDIT
+// ===============================
+
+function editItem(id) {
+    let vault = JSON.parse(localStorage.getItem("collectraVault")) || [];
+    const item = vault.find(item => item.id === id);
     
-    modal.classList.remove("hidden");
-});
+    if (item) {
+        // Set form values
+        titleInput.value = item.title || "";
+        descInput.value = item.description || "";
+        imageInput.value = item.image || "";
+        categoryInput.value = item.category;
+        
+        // Clear all fields first
+        youtubeInput.value = "";
+        spotifyInput.value = "";
+        websiteInput.value = "";
+        bookmarkInput.value = "";
+        
+        // Set category-specific fields
+        if (item.category === "songs") {
+            if (item.links) {
+                youtubeInput.value = item.links.youtube || "";
+                spotifyInput.value = item.links.spotify || "";
+            }
+            songFields.style.display = "block";
+            websiteFields.style.display = "none";
+            bookmarkFields.style.display = "none";
+        } else if (item.category === "websites") {
+            if (item.links) {
+                websiteInput.value = item.links.website || "";
+            }
+            songFields.style.display = "none";
+            websiteFields.style.display = "block";
+            bookmarkFields.style.display = "none";
+        } else if (item.category === "bookmarks") {
+            if (item.links) {
+                bookmarkInput.value = item.links.bookmark || "";
+            }
+            songFields.style.display = "none";
+            websiteFields.style.display = "none";
+            bookmarkFields.style.display = "block";
+        }
+        
+        // Set edit mode
+        editingId = id;
+        saveBtn.textContent = "Update Item";
+        
+        // Open modal
+        modal.classList.remove("hidden");
+    }
+}
+
+// Make editItem globally available
+window.editItem = editItem;
 
 // ===============================
 // CLOSE MODAL WHEN CLICK OUTSIDE
@@ -98,13 +169,11 @@ categoryInput.addEventListener("change", () => {
 });
 
 // ===============================
-// SAVE ITEM TO LOCAL STORAGE
+// SAVE/UPDATE ITEM TO LOCAL STORAGE
 // ===============================
 
 saveBtn.addEventListener("click", function(e) {
-    e.preventDefault(); // Prevent any form submission
-    
-    console.log("Save button clicked"); // Debug log
+    e.preventDefault();
     
     // Validate required fields
     if (!titleInput.value.trim()) {
@@ -138,7 +207,7 @@ saveBtn.addEventListener("click", function(e) {
     }
 
     const newItem = {
-        id: Date.now(),
+        id: editingId || Date.now(), // Use existing ID if editing, new ID if adding
         title: titleInput.value.trim(),
         description: descInput.value.trim(),
         image: imageInput.value.trim(),
@@ -146,27 +215,30 @@ saveBtn.addEventListener("click", function(e) {
         links: links
     };
 
-    console.log("New item:", newItem); // Debug log
-
     // Get existing data from localStorage
     let vault = JSON.parse(localStorage.getItem("collectraVault")) || [];
     
-    // Add new item
-    vault.push(newItem);
+    if (editingId) {
+        // Update existing item
+        const index = vault.findIndex(item => item.id === editingId);
+        if (index !== -1) {
+            vault[index] = newItem;
+            alert("Item updated successfully!");
+        }
+    } else {
+        // Add new item
+        vault.push(newItem);
+        alert("Item saved successfully!");
+    }
     
     // Save back to localStorage
     localStorage.setItem("collectraVault", JSON.stringify(vault));
-    
-    console.log("Saved to localStorage:", vault); // Debug log
 
     // Refresh UI
     displayItems();
 
     // Close modal
     modal.classList.add("hidden");
-    
-    // Show success message
-    alert("Item saved successfully!");
 });
 
 // ===============================
@@ -178,9 +250,6 @@ function displayItems() {
     
     // Get data from localStorage
     let vault = JSON.parse(localStorage.getItem("collectraVault")) || [];
-    
-    console.log("Loading items for category:", currentCategory); // Debug log
-    console.log("All items:", vault); // Debug log
     
     // Filter items by category
     let filteredVault = vault.filter(item => item.category === currentCategory);
@@ -243,9 +312,14 @@ function displayItems() {
         }
 
         card.innerHTML = `
-            <button class="delete-btn" onclick="deleteItem(${item.id})">
-                <i class="fa-solid fa-trash"></i>
-            </button>
+            <div class="card-actions">
+                <button class="edit-btn" onclick="editItem(${item.id})">
+                    <i class="fa-solid fa-pen"></i>
+                </button>
+                <button class="delete-btn" onclick="deleteItem(${item.id})">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>
             <div class="card-image">
                 <img src="${item.image || 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=80'}" 
                      alt="${item.title}"
@@ -268,19 +342,13 @@ function displayItems() {
 // DELETE FUNCTION
 // ===============================
 
-// window.deleteItem = function(id) {
-//     if (confirm("Are you sure you want to delete this item?")) {
-//         let vault = JSON.parse(localStorage.getItem("collectraVault")) || [];
-//         vault = vault.filter(item => item.id !== id);
-//         localStorage.setItem("collectraVault", JSON.stringify(vault));
-//         displayItems();
-//     }
-// };
 window.deleteItem = function(id) {
+    if (confirm("Are you sure you want to delete this item?")) {
         let vault = JSON.parse(localStorage.getItem("collectraVault")) || [];
         vault = vault.filter(item => item.id !== id);
         localStorage.setItem("collectraVault", JSON.stringify(vault));
         displayItems();
+    }
 };
 
 // ===============================
